@@ -15,4 +15,6 @@ data class UsedSymbol(
     val type: String = "symbol",  // symbol、emoji
     @ColumnInfo(name = "time")
     val time: Long = System.currentTimeMillis(),
+    @ColumnInfo(name = "lastModifiedAt")
+    var lastModifiedAt: Long = System.currentTimeMillis(),
 )

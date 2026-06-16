@@ -17,6 +17,7 @@ object WebdavPrefs {
     private const val KEY_USERNAME = "webdav_username"
     private const val KEY_PASSWORD = "webdav_password"
     private const val KEY_LAST_SYNC_TIME = "webdav_last_sync_time"
+    private const val KEY_AUTO_SYNC = "webdav_auto_sync"
 
     private val sp: SharedPreferences by lazy {
         val context = Launcher.instance.context
@@ -61,6 +62,10 @@ object WebdavPrefs {
     var lastSyncTime: Long
         get() = sp.getLong(KEY_LAST_SYNC_TIME, 0L)
         set(value) = sp.edit().putLong(KEY_LAST_SYNC_TIME, value).apply()
+
+    var autoSync: Boolean
+        get() = sp.getBoolean(KEY_AUTO_SYNC, false)
+        set(value) = sp.edit().putBoolean(KEY_AUTO_SYNC, value).apply()
 
     /** 配置是否完整 */
     fun isConfigured(): Boolean = url.isNotBlank()

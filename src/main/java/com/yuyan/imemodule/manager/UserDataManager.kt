@@ -272,49 +272,60 @@ object UserDataManager {
         if (items.isNotEmpty()) db.usedSymbolDao().insertAll(items)
     }
 
-    // ─────────── 合并写入 ───────────
+    // ─────────── 合并写入（时间戳优先：取 lastModifiedAt 更大的那条） ───────────
 
-    private fun <T : Any> mergeLists(local: List<T>, remote: List<T>, keyExtractor: (T) -> Any): List<T> {
+    private fun <T : Any> mergeLists(local: List<T>, remote: List<T>, keyExtractor: (T) -> Any, timestampExtractor: (T) -> Long): List<T> {
         val map = linkedMapOf<Any, T>()
-        for (item in remote) map[keyExtractor(item)] = item
+        // 远程先写入
+        for (item in remote) {
+            val key = keyExtractor(item)
+            val existing = map[key]
+            if (existing == null || timestampExtractor(item) >= timestampExtractor(existing)) {
+                map[key] = item
+            }
+        }
+        // 本地写入（仅当不存在或本地更新）
         for (item in local) {
             val key = keyExtractor(item)
-            if (!map.containsKey(key)) map[key] = item
+            val existing = map[key]
+            if (existing == null || timestampExtractor(item) > timestampExtractor(existing)) {
+                map[key] = item
+            }
         }
         return map.values.toList()
     }
 
     fun mergePhrases(remote: List<Phrase>) {
         val local = db.phraseDao().getAll()
-        val merged = mergeLists(local, remote) { it.content }
+        val merged = mergeLists(local, remote, { it.content }, { it.lastModifiedAt })
         db.phraseDao().deleteAll()
         if (merged.isNotEmpty()) db.phraseDao().insertAll(merged)
     }
 
     fun mergeClipboard(remote: List<Clipboard>) {
         val local = db.clipboardDao().getAll()
-        val merged = mergeLists(local, remote) { it.content }
+        val merged = mergeLists(local, remote, { it.content }, { it.lastModifiedAt })
         db.clipboardDao().deleteAll()
         if (merged.isNotEmpty()) db.clipboardDao().insertAll(merged)
     }
 
     fun mergeSideSymbols(remote: List<SideSymbol>) {
         val local = db.sideSymbolDao().getAllSideSymbolPinyin()
-        val merged = mergeLists(local, remote) { it.symbolKey }
+        val merged = mergeLists(local, remote, { it.symbolKey }, { it.lastModifiedAt })
         db.sideSymbolDao().deleteAll("pinyin")
         if (merged.isNotEmpty()) db.sideSymbolDao().insertAll(merged)
     }
 
     fun mergeSkbFuns(remote: List<SkbFun>) {
         val local = db.skbFunDao().getAllMenu() + db.skbFunDao().getALlBarMenu()
-        val merged = mergeLists(local, remote) { "${it.name}_${it.isKeep}" }
+        val merged = mergeLists(local, remote, { "${it.name}_${it.isKeep}" }, { it.lastModifiedAt })
         db.skbFunDao().deleteAll()
         if (merged.isNotEmpty()) db.skbFunDao().insertAll(merged)
     }
 
     fun mergeUsedSymbols(remote: List<UsedSymbol>) {
         val local = db.usedSymbolDao().getAllUsedSymbol()
-        val merged = mergeLists(local, remote) { it.symbol }
+        val merged = mergeLists(local, remote, { it.symbol }, { it.lastModifiedAt })
         for (item in local) db.usedSymbolDao().delete(item)
         if (merged.isNotEmpty()) db.usedSymbolDao().insertAll(merged)
     }

@@ -20,7 +20,7 @@ import com.yuyan.imemodule.prefs.behavior.SkbMenuMode
 import com.yuyan.imemodule.utils.thread.ThreadPoolUtils
 
 //@Database(entities = [SideSymbol::class, Clipboard::class, UsedSymbol::class], version = 1, exportSchema = false)
-@Database(entities = [SideSymbol::class, Clipboard::class, UsedSymbol::class, Phrase::class, SkbFun::class], version = 4, exportSchema = false)
+@Database(entities = [SideSymbol::class, Clipboard::class, UsedSymbol::class, Phrase::class, SkbFun::class], version = 5, exportSchema = false)
 abstract class DataBaseKT : RoomDatabase() {
     abstract fun sideSymbolDao(): SideSymbolDao
     abstract fun clipboardDao(): ClipboardDao
@@ -48,11 +48,22 @@ abstract class DataBaseKT : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE phrase ADD COLUMN lastModifiedAt INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE clipboard ADD COLUMN lastModifiedAt INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE side_symbol ADD COLUMN lastModifiedAt INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE skbfun ADD COLUMN lastModifiedAt INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE usedSymbol ADD COLUMN lastModifiedAt INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
         val instance = Room.databaseBuilder(Launcher.instance.context, DataBaseKT::class.java, "ime_db")
             .allowMainThreadQueries()
             .addMigrations(MIGRATION_1_2)
             .addMigrations(MIGRATION_2_3)
             .addMigrations(MIGRATION_3_4)
+            .addMigrations(MIGRATION_4_5)
             .addCallback(object :Callback(){
                 override fun onCreate(db: SupportSQLiteDatabase) {
                     super.onCreate(db)

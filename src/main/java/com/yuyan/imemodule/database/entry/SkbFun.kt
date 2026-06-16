@@ -13,4 +13,6 @@ data class SkbFun(
     var isKeep: Int = 0,
     @ColumnInfo(name = "position")
     var position: Int = 0,
+    @ColumnInfo(name = "lastModifiedAt")
+    var lastModifiedAt: Long = System.currentTimeMillis(),
 )

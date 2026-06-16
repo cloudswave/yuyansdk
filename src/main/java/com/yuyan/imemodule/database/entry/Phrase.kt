@@ -21,4 +21,6 @@ data class Phrase(
     var lx17: String,
     @ColumnInfo(name = "time")
     val time: Long = System.currentTimeMillis(),
+    @ColumnInfo(name = "lastModifiedAt")
+    var lastModifiedAt: Long = System.currentTimeMillis(),
 )

@@ -225,6 +225,7 @@
     <string name="webdav_connection_success">连接成功 ✓</string>
     <string name="webdav_upload_success">上传成功 ✓</string>
     <string name="webdav_download_success">同步成功 ✓</string>
+    <string name="webdav_auto_sync">自动同步</string>
     <string name="webdav_backup_actions">全量备份与恢复</string>
     <string name="webdav_backup_full">备份到 WebDAV</string>
     <string name="webdav_backup_full_summary">导出原始数据 ZIP 到远程服务器</string>

@@ -92,7 +92,7 @@ class EditPhrasesView(context: Context) : LinearLayout(context){
             val pinYinHeadChar  = mEtPhrasesQuickCode.text.toString()
             val pinYinHeadT9 = pinYinHeadChar.map { T9PinYinUtils.pinyin2T9Key(it)}.joinToString("")
             val pinYinHeadLX17 = pinYinHeadChar.map { LX17PinYinUtils.pinyin2Lx17Key(it)}.joinToString("")
-            val phrase =  Phrase(content = content, t9 = pinYinHeadT9, qwerty = pinYinHeadChar, lx17 = pinYinHeadLX17)
+            val phrase =  Phrase(content = content, t9 = pinYinHeadT9, qwerty = pinYinHeadChar, lx17 = pinYinHeadLX17, lastModifiedAt = System.currentTimeMillis())
             DataBaseKT.instance.phraseDao().insert(phrase)
             KeyboardManager.instance.switchKeyboard(InputModeSwitcher.skbImeLayout)
         }

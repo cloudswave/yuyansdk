@@ -21,7 +21,10 @@ import com.yuyan.imemodule.data.theme.ThemeManager.removeOnChangedListener
 import com.yuyan.imemodule.keyboard.InputView
 import com.yuyan.imemodule.keyboard.KeyboardManager
 import com.yuyan.imemodule.keyboard.container.ClipBoardContainer
+import com.yuyan.imemodule.manager.SyncManager
+import com.yuyan.imemodule.manager.WebdavClient
 import com.yuyan.imemodule.prefs.AppPrefs.Companion.getInstance
+import com.yuyan.imemodule.prefs.WebdavPrefs
 import com.yuyan.imemodule.prefs.behavior.SkbMenuMode
 import com.yuyan.imemodule.singleton.EnvironmentSingleton
 import com.yuyan.imemodule.utils.KeyboardLoaderUtil
@@ -30,6 +33,7 @@ import com.yuyan.imemodule.utils.isDarkMode
 import com.yuyan.imemodule.view.preference.ManagedPreference
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import splitties.bitflags.hasFlag
@@ -55,6 +59,15 @@ class ImeService : InputMethodService() {
                 }
             }
         }
+    }
+    private val serviceScope = CoroutineScope(Dispatchers.IO)
+    private var syncJob: Job? = null
+    private var uploadJob: Job? = null
+
+    /** 创建 WebDAV 客户端（如果已配置） */
+    private fun webdavClientOrNull(): WebdavClient? {
+        if (!WebdavPrefs.isConfigured() || !WebdavPrefs.autoSync) return null
+        return WebdavClient(WebdavPrefs.url, WebdavPrefs.username, WebdavPrefs.password)
     }
     override fun onCreate() {
         super.onCreate()
@@ -86,12 +99,41 @@ class ImeService : InputMethodService() {
     override fun onStartInputView(editorInfo: EditorInfo, restarting: Boolean) {
         if (::mInputView.isInitialized)mInputView.onStartInputView(editorInfo, restarting)
         super.onStartInputView(editorInfo, restarting)
+        // 自动同步：键盘弹出时拉取远程合并
+        triggerSync()
     }
 
     override fun onDestroy() {
         super.onDestroy()
         removeOnChangedListener(onThemeChangeListener)
         clipboardUpdateContent.unregisterOnChangeListener(clipboardUpdateContentListener)
+        syncJob?.cancel()
+        uploadJob?.cancel()
+    }
+
+    // ─── 自动同步 (WebDAV) ─────────────────────────────────
+
+    /** 键盘弹出时：拉取远程数据并合并，要求 autoSync 已开启 */
+    private fun triggerSync() {
+        val client = webdavClientOrNull() ?: return
+        if (syncJob?.isActive == true) return
+        syncJob = serviceScope.launch {
+            SyncManager.autoSync(client)
+            WebdavPrefs.lastSyncTime = System.currentTimeMillis()
+            syncJob = null
+        }
+    }
+
+    /** 防抖上传：数据变更后调用，30 秒内再次调用会重置计时器 */
+    fun notifyDataChanged() {
+        if (webdavClientOrNull() == null) return
+        uploadJob?.cancel()
+        uploadJob = serviceScope.launch {
+            delay(30_000) // 30 秒防抖
+            val client = webdavClientOrNull() ?: return@launch
+            SyncManager.autoUpload(client)
+            WebdavPrefs.lastSyncTime = System.currentTimeMillis()
+        }
     }
 
     /**

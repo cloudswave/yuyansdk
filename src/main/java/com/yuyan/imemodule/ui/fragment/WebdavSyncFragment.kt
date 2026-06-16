@@ -7,6 +7,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.preference.EditTextPreference
 import androidx.preference.Preference
 import androidx.preference.PreferenceScreen
+import androidx.preference.SwitchPreferenceCompat
 import com.yuyan.imemodule.R
 import com.yuyan.imemodule.manager.SyncManager
 import com.yuyan.imemodule.manager.WebdavClient
@@ -81,6 +82,19 @@ class WebdavSyncFragment : CsPreferenceFragment() {
 
             addCategory(R.string.webdav_sync_actions) {
                 isIconSpaceReserved = false
+
+                SwitchPreferenceCompat(ctx).apply {
+                    key = "webdav_auto_sync"
+                    setTitle(R.string.webdav_auto_sync)
+                    summaryOn = "已开启 — 键盘弹出时自动同步，数据变更后防抖上传"
+                    summaryOff = "关闭"
+                    isChecked = WebdavPrefs.autoSync
+                    setOnPreferenceChangeListener { _, newValue ->
+                        val enabled = newValue == true
+                        WebdavPrefs.autoSync = enabled
+                        true
+                    }
+                }.let { addPreference(it) }
 
                 addPreference(R.string.webdav_upload, onClick = {
                     startSync(isUpload = true)

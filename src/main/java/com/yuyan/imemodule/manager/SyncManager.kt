@@ -143,6 +143,34 @@ object SyncManager {
         onProgress?.invoke("恢复完成 ✓ 即将重启应用")
     }
 
+    // ─── 自动同步 ──────────────────────────────────────────
+
+    /** 自动同步：下载远端 + 时间戳合并 + 回传（静默执行，不弹 Toast） */
+    fun autoSync(client: WebdavClient, onProgress: ((String) -> Unit)? = null): Result<Unit> = runCatching {
+        onProgress?.invoke("正在同步…")
+        val data = try {
+            client.download(REMOTE_FILE).getOrThrow()
+        } catch (e: WebdavException) {
+            if (e.errorMessage.contains("远程文件不存在") || e.errorMessage.contains("404")) {
+                onProgress?.invoke("远程无数据，跳过")
+                return@runCatching
+            }
+            throw e
+        }
+        val jsonStr = String(data, Charsets.UTF_8)
+        onProgress?.invoke("正在合并…")
+        UserDataManager.deserializeSyncJson(jsonStr, merge = true)
+        onProgress?.invoke("正在回传…")
+        upload(client, onProgress)
+        onProgress?.invoke("同步完成 ✓")
+    }
+
+    /** 自动上传：防抖后上传本地数据到远端 */
+    fun autoUpload(client: WebdavClient, onProgress: ((String) -> Unit)? = null): Result<Unit> = runCatching {
+        onProgress?.invoke("正在上传…")
+        upload(client, onProgress)
+    }
+
     // ─── 工具 ──────────────────────────────────────────────
 
     /** 从备份文件名中提取可读时间：20260615_231400 → 2026-06-15 23:14:00 */
