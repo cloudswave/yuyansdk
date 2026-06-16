@@ -18,4 +18,7 @@ interface UsedSymbolDao : BaseDao<UsedSymbol> {
 
     @Query("DELETE FROM usedSymbol WHERE symbol IN ( SELECT symbol FROM usedSymbol WHERE type = :type ORDER BY time ASC LIMIT :overflow)")
     fun deleteOldest(type: String, overflow: Int)
+
+    @Query("DELETE FROM usedSymbol")
+    fun deleteAll()
 }

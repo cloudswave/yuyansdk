@@ -98,7 +98,15 @@
     <fragment
         android:id="@+id/otherSettingsFragment"
         android:name="com.yuyan.imemodule.ui.fragment.OtherSettingsFragment"
-        android:label="@string/setting_ime_other" />
+        android:label="@string/setting_ime_other">
+        <action
+            android:id="@+id/action_otherSettingsFragment_to_webdavSyncFragment"
+            app:destination="@id/webdavSyncFragment" />
+    </fragment>
+    <fragment
+        android:id="@+id/webdavSyncFragment"
+        android:name="com.yuyan.imemodule.ui.fragment.WebdavSyncFragment"
+        android:label="@string/webdav_sync" />
     <activity
         android:id="@+id/setupActivity"
         android:name="com.yuyan.imemodule.ui.setup.SetupActivity"

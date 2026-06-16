@@ -25,6 +25,7 @@ import com.yuyan.imemodule.utils.queryFileName
 import com.yuyan.imemodule.utils.TimeUtils
 import com.yuyan.imemodule.view.preference.ManagedPreference
 import com.yuyan.imemodule.view.widget.withLoadingDialog
+import androidx.navigation.fragment.findNavController
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 
@@ -101,6 +102,12 @@ class OtherSettingsFragment: ManagedPreferenceFragment(AppPrefs.getInstance().ot
 
     override fun onPreferenceUiCreated(screen: PreferenceScreen) {
         val ctx = requireContext()
+
+        // WebDAV 同步入口
+        screen.addPreference(R.string.webdav_sync) {
+            findNavController().navigate(R.id.action_otherSettingsFragment_to_webdavSyncFragment)
+        }
+
         screen.addPreference(R.string.export_user_data) {
             lifecycleScope.launch {
                 exportTimestamp = System.currentTimeMillis()
