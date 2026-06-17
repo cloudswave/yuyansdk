@@ -132,12 +132,19 @@ object UserDataManager {
                 }
                 // 导入前先清空目标目录
                 dataBasesDir.deleteRecursively()
-                // external: 不清空整个目录，只清空备份中存在的子项，避免丢 rime/hw 等大文件
+                // external: 只删备份中存在的叶子文件 + 空目录，不碰目录根
+                // 避免 rime/build 等未备份的子目录被误删
                 if (File(tempDir, "external").exists()) {
                     File(tempDir, "external").listFiles()?.forEach { backedUpItem ->
                         val target = File(externalDir, backedUpItem.name)
                         if (backedUpItem.isDirectory) {
-                            target.deleteRecursively()
+                            // 遍历备份树，从叶子向上删（只删备份中存在的路径）
+                            backedUpItem.walkTopDown().sortedDescending().forEach { srcChild ->
+                                val relPath = srcChild.relativeTo(backedUpItem)
+                                if (relPath.path != "") {
+                                    File(target, relPath.path).delete()
+                                }
+                            }
                         } else {
                             target.delete()
                         }
