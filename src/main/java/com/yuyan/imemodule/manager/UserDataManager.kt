@@ -77,14 +77,19 @@ object UserDataManager {
 
     // ─────────── 手动导出/导入（原始文件格式，兼容原版） ───────────
 
+    /** 跳过外部目录中这些相对路径下的文件（rime/build 编译词典 + hw 手写数据，很大且可重新生成） */
+    private val EXTERNAL_SKIP_REL = setOf("rime/build", "hw")
+
     @OptIn(ExperimentalSerializationApi::class)
     fun export(dest: OutputStream, timestamp: Long = System.currentTimeMillis()) = runCatching {
         ZipOutputStream(dest.buffered()).use { zipStream ->
-            fun writeFileTree(srcDir: File, destPrefix: String) {
+            fun writeFileTree(srcDir: File, destPrefix: String, skipRelPrefixes: Set<String> = emptySet()) {
                 zipStream.putNextEntry(ZipEntry("$destPrefix/"))
                 srcDir.walkTopDown().forEach { f ->
                     val related = f.relativeTo(srcDir)
                     if (related.path != "") {
+                        // 跳过指定的相对路径前缀（如 rime/build, hw），保留 userdb
+                        if (skipRelPrefixes.any { related.path == it || related.path.startsWith("$it/") }) return@forEach
                         if (f.isDirectory) {
                             zipStream.putNextEntry(ZipEntry("$destPrefix/${related.path}/"))
                         } else if (f.isFile) {
@@ -96,7 +101,7 @@ object UserDataManager {
             }
             writeFileTree(sharedPrefsDir, "shared_prefs")
             writeFileTree(dataBasesDir, "databases")
-            writeFileTree(externalDir, "external")
+            writeFileTree(externalDir, "external", EXTERNAL_SKIP_REL)
             zipStream.putNextEntry(ZipEntry("metadata.json"))
             val pkgInfo = Launcher.instance.context.packageManager.getPackageInfo(
                 Launcher.instance.context.packageName, 0
@@ -127,7 +132,17 @@ object UserDataManager {
                 }
                 // 导入前先清空目标目录
                 dataBasesDir.deleteRecursively()
-                externalDir.deleteRecursively()
+                // external: 不清空整个目录，只清空备份中存在的子项，避免丢 rime/hw 等大文件
+                if (File(tempDir, "external").exists()) {
+                    File(tempDir, "external").listFiles()?.forEach { backedUpItem ->
+                        val target = File(externalDir, backedUpItem.name)
+                        if (backedUpItem.isDirectory) {
+                            target.deleteRecursively()
+                        } else {
+                            target.delete()
+                        }
+                    }
+                }
                 // shared_prefs 使用 editor.clear() 避免引用冲突
                 // 必须用 commit()（同步），apply() 会异步排队写入磁盘，
                 // 导致后续 copyDir 写入的备份数据被空的 preferences 覆盖

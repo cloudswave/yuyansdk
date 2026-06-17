@@ -113,10 +113,13 @@ class ImeService : InputMethodService() {
 
     // ─── 自动同步 (WebDAV) ─────────────────────────────────
 
-    /** 键盘弹出时：拉取远程数据并合并，要求 autoSync 已开启 */
+    /** 键盘弹出时：拉取远程数据并合并（最多每 5 分钟一次） */
     private fun triggerSync() {
         val client = webdavClientOrNull() ?: return
         if (syncJob?.isActive == true) return
+        // 冷却：5 分钟内不同步第二次
+        val now = System.currentTimeMillis()
+        if (now - WebdavPrefs.lastSyncTime < 5 * 60 * 1000) return
         syncJob = serviceScope.launch {
             SyncManager.autoSync(client)
             WebdavPrefs.lastSyncTime = System.currentTimeMillis()
