@@ -67,6 +67,9 @@ class WebdavSyncFragment : CsPreferenceFragment() {
                     setDialogTitle(R.string.webdav_password)
                     summary = if (WebdavPrefs.password.isNotEmpty()) "••••••••" else "未设置"
                     text = WebdavPrefs.password
+                    setOnBindEditTextListener { editText ->
+                        editText.inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+                    }
                     setOnPreferenceChangeListener { _, newValue ->
                         val pw = newValue?.toString() ?: ""
                         WebdavPrefs.password = pw
@@ -175,7 +178,7 @@ class WebdavSyncFragment : CsPreferenceFragment() {
             if (isUpload) {
                 showDialog()
                 val result = withContext(Dispatchers.IO) {
-                    SyncManager.upload(client) { progress ->
+                    SyncManager.uploadForce(client) { progress ->
                         launch(Dispatchers.Main) { actionPref?.summary = progress }
                     }
                 }

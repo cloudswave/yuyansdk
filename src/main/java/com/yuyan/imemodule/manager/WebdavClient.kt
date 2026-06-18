@@ -8,6 +8,10 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
 import java.util.concurrent.TimeUnit
 import javax.net.ssl.SSLException
 
@@ -177,6 +181,50 @@ class WebdavClient(
         // 网络错误视为不存在
         false
     }
+
+    /** 获取远程文件最后修改时间（PROPFIND Depth 0，读 Last-Modified 头） */
+    fun getLastModified(remotePath: String): Result<Long> = runCatching {
+        val url = normalizeUrl(remotePath)
+        val request = Request.Builder()
+            .url(url)
+            .method("PROPFIND", null)
+            .header("Authorization", credential)
+            .header("Depth", "0")
+            .build()
+        val response = client.newCall(request).execute()
+        if (!response.isSuccessful) {
+            val code = response.code
+            response.close()
+            if (code == 404) throw WebdavException("远程文件不存在")
+            throw WebdavException("获取文件信息失败 (HTTP $code)")
+        }
+        val lastModifiedHeader = response.header("Last-Modified")
+        response.close()
+        if (lastModifiedHeader != null) {
+            val sdf = SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss 'GMT'", Locale.US)
+            sdf.timeZone = TimeZone.getTimeZone("GMT")
+            sdf.parse(lastModifiedHeader)?.time
+                ?: throw WebdavException("无法解析 Last-Modified")
+        } else {
+            throw WebdavException("服务端未返回 Last-Modified")
+        }
+    }.recoverCatching { e -> throw mapNetworkError(e) }
+
+    /** 删除远程文件 */
+    fun delete(remotePath: String): Result<Unit> = runCatching {
+        val url = normalizeUrl(remotePath)
+        val request = Request.Builder()
+            .url(url)
+            .delete()
+            .header("Authorization", credential)
+            .build()
+        val response = client.newCall(request).execute()
+        val code = response.code
+        response.close()
+        if (code !in 200..299 && code != 204 && code != 404) {
+            throw WebdavException(errorMessage = "删除失败 (HTTP $code)")
+        }
+    }.recoverCatching { e -> throw mapNetworkError(e) }
 
     /** 列出远程目录下所有文件名 */
     fun listFiles(remoteDir: String): Result<List<String>> = runCatching {

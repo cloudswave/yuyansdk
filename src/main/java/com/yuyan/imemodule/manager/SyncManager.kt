@@ -1,7 +1,9 @@
 package com.yuyan.imemodule.manager
 
 import com.yuyan.imemodule.manager.WebdavClient.WebdavException
+import com.yuyan.imemodule.prefs.WebdavPrefs
 import java.io.IOException
+import java.security.MessageDigest
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -10,6 +12,7 @@ import java.util.Locale
  * 同步管理器
  *
  * - 增量同步：单个 JSON 文件 yuyanime.json
+ * - 哈希检测：上传前计算内容 SHA-256，无变更时跳过上传
  * - 全量备份：原始格式 ZIP，按时间戳命名 yuyanIme_backup_yyyyMMdd_HHmmss.zip
  */
 object SyncManager {
@@ -19,23 +22,51 @@ object SyncManager {
     private const val BACKUP_PREFIX = "yuyanIme_backup_"
     private const val MAX_HISTORY = 10
 
+    // ─── 哈希工具 ──────────────────────────────────────────
+
+    private fun sha256(data: ByteArray): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        return digest.digest(data).joinToString("") { "%02x".format(it) }
+    }
+
     // ─── 增量同步 ──────────────────────────────────────────
 
-    /** 上传本地数据到 WebDAV，同时保留带时间戳的历史版本并清理旧历史 */
+    /** 上传本地数据到 WebDAV（跳过无变更上传）*/
     fun upload(client: WebdavClient, onProgress: ((String) -> Unit)? = null): Result<Unit> = runCatching {
         onProgress?.invoke("准备数据…")
         val jsonStr = UserDataManager.serializeSyncJson()
         val data = jsonStr.toByteArray(Charsets.UTF_8)
+        val hash = sha256(data)
+
+        // 哈希未变 → 数据无变更，跳过上传
+        if (hash == WebdavPrefs.lastUploadHash) {
+            onProgress?.invoke("数据无变更，跳过上传 ✓")
+            return@runCatching
+        }
+
         onProgress?.invoke("正在上传…")
         client.ensureBaseDirectory()
-        // 写入实时文件
         client.upload(data, REMOTE_FILE).getOrThrow()
-        // 写入历史副本
+        // 记录本次哈希
+        WebdavPrefs.lastUploadHash = hash
+        onProgress?.invoke("上传完成 ✓")
+    }
+
+    /** 强制上传（跳过哈希检测，用于手动「上传到 WebDAV」按钮），保留历史版本 */
+    fun uploadForce(client: WebdavClient, onProgress: ((String) -> Unit)? = null): Result<Unit> = runCatching {
+        onProgress?.invoke("准备数据…")
+        val jsonStr = UserDataManager.serializeSyncJson()
+        val data = jsonStr.toByteArray(Charsets.UTF_8)
+        val hash = sha256(data)
+
+        onProgress?.invoke("正在上传…")
+        client.ensureBaseDirectory()
+        client.upload(data, REMOTE_FILE).getOrThrow()
         val ts = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
         val historyFile = "${HISTORY_PREFIX}${ts}.json"
         client.upload(data, historyFile).getOrThrow()
-        // 清理旧历史，保留最新 MAX_HISTORY 份
         cleanupHistory(client)
+        WebdavPrefs.lastUploadHash = hash
         onProgress?.invoke("上传完成 ✓")
     }
 
@@ -47,7 +78,7 @@ object SyncManager {
         if (historyFiles.size <= MAX_HISTORY) return
         // 删除多余的旧版本
         for (oldFile in historyFiles.drop(MAX_HISTORY)) {
-            runCatching { /* 忽略删除失败 */ }
+            runCatching { client.delete(oldFile).getOrThrow() }
         }
     }
 
@@ -97,6 +128,8 @@ object SyncManager {
         upload(client, onProgress)
 
         onProgress?.invoke("同步完成 ✓ 部分设置需重启生效")
+        // 清理过期 tombstone
+        UserDataManager.purgeOldDeletedEntries()
     }
 
     // ─── 全量备份与恢复 ──────────────────────────────────────
@@ -145,9 +178,19 @@ object SyncManager {
 
     // ─── 自动同步 ──────────────────────────────────────────
 
-    /** 自动同步：下载远端 + 时间戳合并 + 回传（静默执行，不弹 Toast） */
+    /** 自动同步：先检查远端最后修改时间，未变更则跳过下载 */
     fun autoSync(client: WebdavClient, onProgress: ((String) -> Unit)? = null): Result<Unit> = runCatching {
         onProgress?.invoke("正在同步…")
+
+        // 检查远端文件的最后修改时间，未变更则跳过整个同步
+        val remoteModified = try {
+            client.getLastModified(REMOTE_FILE).getOrNull()
+        } catch (_: Exception) { null }
+        if (remoteModified != null && remoteModified <= WebdavPrefs.lastSyncTime) {
+            onProgress?.invoke("远端无变化，跳过同步 ✓")
+            return@runCatching
+        }
+
         val data = try {
             client.download(REMOTE_FILE).getOrThrow()
         } catch (e: WebdavException) {
@@ -163,6 +206,8 @@ object SyncManager {
         onProgress?.invoke("正在回传…")
         upload(client, onProgress)
         onProgress?.invoke("同步完成 ✓")
+        // 同步成功后清理过期 tombstone
+        UserDataManager.purgeOldDeletedEntries()
     }
 
     /** 自动上传：防抖后上传本地数据到远端 */

@@ -563,7 +563,7 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
         }
 
         override fun onClickClearClipBoard() {
-            DataBaseKT.instance.clipboardDao().deleteAllExceptKeep()
+            DataBaseKT.instance.clipboardDao().softDeleteAllExceptKeep()
             (KeyboardManager.instance.currentContainer as? ClipBoardContainer)?.showClipBoardView(SkbMenuMode.ClipBoard)
         }
     }
@@ -574,7 +574,7 @@ class InputView(context: Context, private val service: ImeService) : LifecycleRe
             KeyboardManager.instance.switchKeyboard(InputModeSwitcher.skbImeLayout)
             initView(context)
             if (extra != null) {
-                DataBaseKT.instance.phraseDao().deleteByContent(extra.content)
+                DataBaseKT.instance.phraseDao().softDeleteByContent(extra.content)
                 mAddPhrasesLayout.setExtraData(extra)
             } else {
                 mAddPhrasesLayout.clearPhrasesContent()

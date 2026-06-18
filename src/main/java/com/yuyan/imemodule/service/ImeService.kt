@@ -64,6 +64,16 @@ class ImeService : InputMethodService() {
     private var syncJob: Job? = null
     private var uploadJob: Job? = null
 
+    companion object {
+        private var instance: ImeService? = null
+
+        /** 数据发生变更时调用，触发 30 秒防抖自动上传到 WebDAV */
+        @JvmStatic
+        fun notifyDataChanged() {
+            instance?.notifyDataChangedInternal()
+        }
+    }
+
     /** 创建 WebDAV 客户端（如果已配置） */
     private fun webdavClientOrNull(): WebdavClient? {
         if (!WebdavPrefs.isConfigured() || !WebdavPrefs.autoSync) return null
@@ -71,6 +81,7 @@ class ImeService : InputMethodService() {
     }
     override fun onCreate() {
         super.onCreate()
+        instance = this
         addOnChangedListener(onThemeChangeListener)
         clipboardUpdateContent.registerOnChangeListener(clipboardUpdateContentListener)
     }
@@ -105,6 +116,7 @@ class ImeService : InputMethodService() {
 
     override fun onDestroy() {
         super.onDestroy()
+        instance = null
         removeOnChangedListener(onThemeChangeListener)
         clipboardUpdateContent.unregisterOnChangeListener(clipboardUpdateContentListener)
         syncJob?.cancel()
@@ -128,7 +140,7 @@ class ImeService : InputMethodService() {
     }
 
     /** 防抖上传：数据变更后调用，30 秒内再次调用会重置计时器 */
-    fun notifyDataChanged() {
+    private fun notifyDataChangedInternal() {
         if (webdavClientOrNull() == null) return
         uploadJob?.cancel()
         uploadJob = serviceScope.launch {

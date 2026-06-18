@@ -17,4 +17,6 @@ data class SideSymbol(
     val type: String = "pinyin",
     @ColumnInfo(name = "lastModifiedAt")
     var lastModifiedAt: Long = System.currentTimeMillis(),
+    @ColumnInfo(name = "deletedAt")
+    var deletedAt: Long? = null,
 )

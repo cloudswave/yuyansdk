@@ -17,6 +17,7 @@ import com.yuyan.imemodule.database.entry.Phrase
 import com.yuyan.imemodule.libs.pinyin4j.PinyinHelper
 import com.yuyan.imemodule.manager.InputModeSwitcher
 import com.yuyan.imemodule.keyboard.KeyboardManager
+import com.yuyan.imemodule.service.ImeService
 import com.yuyan.imemodule.view.widget.ImeEditText
 import com.yuyan.inputmethod.util.LX17PinYinUtils
 import com.yuyan.inputmethod.util.T9PinYinUtils
@@ -94,6 +95,7 @@ class EditPhrasesView(context: Context) : LinearLayout(context){
             val pinYinHeadLX17 = pinYinHeadChar.map { LX17PinYinUtils.pinyin2Lx17Key(it)}.joinToString("")
             val phrase =  Phrase(content = content, t9 = pinYinHeadT9, qwerty = pinYinHeadChar, lx17 = pinYinHeadLX17, lastModifiedAt = System.currentTimeMillis())
             DataBaseKT.instance.phraseDao().insert(phrase)
+            ImeService.notifyDataChanged()
             KeyboardManager.instance.switchKeyboard(InputModeSwitcher.skbImeLayout)
         }
     }

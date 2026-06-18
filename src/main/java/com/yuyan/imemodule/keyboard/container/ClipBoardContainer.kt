@@ -16,6 +16,11 @@ import com.yuyan.imemodule.application.CustomConstant
 import com.yuyan.imemodule.data.theme.ThemeManager.activeTheme
 import com.yuyan.imemodule.database.DataBaseKT
 import com.yuyan.imemodule.database.entry.Clipboard
+import com.yuyan.imemodule.database.entry.Phrase
+import com.yuyan.imemodule.libs.pinyin4j.PinyinHelper
+import com.yuyan.imemodule.prefs.behavior.SkbMenuMode
+import com.yuyan.inputmethod.util.LX17PinYinUtils
+import com.yuyan.inputmethod.util.T9PinYinUtils
 import com.yuyan.imemodule.libs.recyclerview.SwipeMenu
 import com.yuyan.imemodule.libs.recyclerview.SwipeMenuBridge
 import com.yuyan.imemodule.libs.recyclerview.SwipeMenuItem
@@ -23,11 +28,11 @@ import com.yuyan.imemodule.libs.recyclerview.SwipeRecyclerView
 import com.yuyan.imemodule.prefs.AppPrefs
 import com.yuyan.imemodule.prefs.behavior.ClipboardLayoutMode
 import com.yuyan.imemodule.prefs.behavior.PopupMenuMode
-import com.yuyan.imemodule.prefs.behavior.SkbMenuMode
 import com.yuyan.imemodule.singleton.EnvironmentSingleton
 import com.yuyan.imemodule.keyboard.InputView
 import com.yuyan.imemodule.keyboard.KeyboardManager
 import com.yuyan.imemodule.manager.layout.CustomGridLayoutManager
+import com.yuyan.imemodule.service.ImeService
 import com.yuyan.imemodule.singleton.EnvironmentSingleton.Companion.instance
 import splitties.dimensions.dp
 import splitties.views.textResource
@@ -110,6 +115,13 @@ class ClipBoardContainer(context: Context, inputView: InputView) : BaseContainer
                 image.setTint(activeTheme.keyTextColor)
             }
             rightMenu.addMenuItem(topItem)
+            if (itemMode == SkbMenuMode.ClipBoard) {
+                val addItem = SwipeMenuItem(mContext).apply {
+                    setImage(R.drawable.ic_menu_plus)
+                    image.setTint(activeTheme.keyTextColor)
+                }
+                rightMenu.addMenuItem(addItem)
+            }
             val deleteItem = SwipeMenuItem(mContext).apply {
                 setImage(R.drawable.ic_menu_delete)
                 image.setTint(activeTheme.keyTextColor)
@@ -123,10 +135,24 @@ class ClipBoardContainer(context: Context, inputView: InputView) : BaseContainer
                     val data: Clipboard = copyContents[position]
                     data.isKeep = 1 - data.isKeep
                     DataBaseKT.instance.clipboardDao().update(data)
+                    ImeService.notifyDataChanged()
                     showClipBoardView(SkbMenuMode.ClipBoard)
-                } else if(menuBridge.position == 1){
+                } else if(menuBridge.position == 1) {
+                    // 添加到常用语
+                    val data: Clipboard = copyContents[position]
+                    val content = data.content
+                    if (content.isNotBlank()) {
+                        val pinYinHead = PinyinHelper.getPinYinHeadChar(content.take(4))
+                        val t9 = pinYinHead.map { T9PinYinUtils.pinyin2T9Key(it) }.joinToString("")
+                        val lx17 = pinYinHead.map { LX17PinYinUtils.pinyin2Lx17Key(it) }.joinToString("")
+                        val phrase = Phrase(content = content, t9 = t9, qwerty = pinYinHead, lx17 = lx17, lastModifiedAt = System.currentTimeMillis())
+                        DataBaseKT.instance.phraseDao().insert(phrase)
+                        ImeService.notifyDataChanged()
+                    }
+                } else if(menuBridge.position == 2){
                     val data: Clipboard = copyContents.removeAt(position)
-                    DataBaseKT.instance.clipboardDao().deleteByContent(data.content)
+                    DataBaseKT.instance.clipboardDao().softDeleteByContent(data.content)
+                    ImeService.notifyDataChanged()
                     mRVSymbolsView.adapter?.notifyItemRemoved(position)
                 }
             } else {
@@ -134,7 +160,8 @@ class ClipBoardContainer(context: Context, inputView: InputView) : BaseContainer
                 if(menuBridge.position == 0) {
                     inputView.onSettingsMenuClick(SkbMenuMode.AddPhrases, DataBaseKT.instance.phraseDao().queryByContent(content))
                 } else if(menuBridge.position == 1){
-                    DataBaseKT.instance.phraseDao().deleteByContent(content)
+                    DataBaseKT.instance.phraseDao().softDeleteByContent(content)
+                    ImeService.notifyDataChanged()
                     showClipBoardView(SkbMenuMode.Phrases)
                 }
             }

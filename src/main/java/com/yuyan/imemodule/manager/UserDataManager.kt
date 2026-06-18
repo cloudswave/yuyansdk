@@ -184,15 +184,15 @@ object UserDataManager {
         return SettingsData(entries)
     }
 
-    private fun readPhrases(): List<Phrase> = db.phraseDao().getAll()
-    private fun readClipboard(): List<Clipboard> = db.clipboardDao().getAll()
-    private fun readSideSymbols(): List<SideSymbol> = db.sideSymbolDao().getAllSideSymbolPinyin()
+    private fun readPhrases(): List<Phrase> = db.phraseDao().getAllForSync()
+    private fun readClipboard(): List<Clipboard> = db.clipboardDao().getAllForSync()
+    private fun readSideSymbols(): List<SideSymbol> = db.sideSymbolDao().getAllSideSymbolPinyinForSync()
     private fun readSkbFuns(): List<SkbFun> {
-        val menu = db.skbFunDao().getAllMenu()
-        val bar = db.skbFunDao().getALlBarMenu()
+        val menu = db.skbFunDao().getAllMenuForSync()
+        val bar = db.skbFunDao().getALlBarMenuForSync()
         return menu + bar
     }
-    private fun readUsedSymbols(): List<UsedSymbol> = db.usedSymbolDao().getAllUsedSymbol()
+    private fun readUsedSymbols(): List<UsedSymbol> = db.usedSymbolDao().getAllUsedSymbolForSync()
 
     private fun readMetadata(): Metadata {
         val pkgInfo = Launcher.instance.context.packageManager.getPackageInfo(
@@ -294,9 +294,16 @@ object UserDataManager {
         if (items.isNotEmpty()) db.usedSymbolDao().insertAll(items)
     }
 
-    // ─────────── 合并写入（时间戳优先：取 lastModifiedAt 更大的那条） ───────────
+    // ─────────── 合并写入（时间戳优先 + tombstone 感知） ───────────
 
-    private fun <T : Any> mergeLists(local: List<T>, remote: List<T>, keyExtractor: (T) -> Any, timestampExtractor: (T) -> Long): List<T> {
+    /** 通用的 LWW 合并。local/remote 各自含删除标记，最后过滤掉 deleted 的。 */
+    private fun <T : Any> mergeLists(
+        local: List<T>,
+        remote: List<T>,
+        keyExtractor: (T) -> Any,
+        timestampExtractor: (T) -> Long,
+        deletedAtExtractor: ((T) -> Long?)? = null
+    ): List<T> {
         val map = linkedMapOf<Any, T>()
         // 远程先写入
         for (item in remote) {
@@ -314,42 +321,59 @@ object UserDataManager {
                 map[key] = item
             }
         }
-        return map.values.toList()
+        val result = map.values.toList()
+        // 过滤掉 tombstone
+        if (deletedAtExtractor != null) {
+            return result.filter { deletedAtExtractor(it) == null }
+        }
+        return result
     }
 
     fun mergePhrases(remote: List<Phrase>) {
-        val local = db.phraseDao().getAll()
-        val merged = mergeLists(local, remote, { it.content }, { it.lastModifiedAt })
+        val local = db.phraseDao().getAllForSync()
+        val merged = mergeLists(local, remote, { it.content }, { it.lastModifiedAt }, { it.deletedAt })
         db.phraseDao().deleteAll()
         if (merged.isNotEmpty()) db.phraseDao().insertAll(merged)
     }
 
     fun mergeClipboard(remote: List<Clipboard>) {
-        val local = db.clipboardDao().getAll()
-        val merged = mergeLists(local, remote, { it.content }, { it.lastModifiedAt })
+        val local = db.clipboardDao().getAllForSync()
+        val merged = mergeLists(local, remote, { it.content }, { it.lastModifiedAt }, { it.deletedAt })
         db.clipboardDao().deleteAll()
         if (merged.isNotEmpty()) db.clipboardDao().insertAll(merged)
     }
 
     fun mergeSideSymbols(remote: List<SideSymbol>) {
-        val local = db.sideSymbolDao().getAllSideSymbolPinyin()
-        val merged = mergeLists(local, remote, { it.symbolKey }, { it.lastModifiedAt })
+        val local = db.sideSymbolDao().getAllSideSymbolPinyinForSync()
+        val merged = mergeLists(local, remote, { it.symbolKey }, { it.lastModifiedAt }, { it.deletedAt })
         db.sideSymbolDao().deleteAll("pinyin")
         if (merged.isNotEmpty()) db.sideSymbolDao().insertAll(merged)
     }
 
     fun mergeSkbFuns(remote: List<SkbFun>) {
-        val local = db.skbFunDao().getAllMenu() + db.skbFunDao().getALlBarMenu()
-        val merged = mergeLists(local, remote, { "${it.name}_${it.isKeep}" }, { it.lastModifiedAt })
+        val local = db.skbFunDao().getAllMenuForSync() + db.skbFunDao().getALlBarMenuForSync()
+        val merged = mergeLists(local, remote, { "${it.name}_${it.isKeep}" }, { it.lastModifiedAt }, { it.deletedAt })
         db.skbFunDao().deleteAll()
         if (merged.isNotEmpty()) db.skbFunDao().insertAll(merged)
     }
 
     fun mergeUsedSymbols(remote: List<UsedSymbol>) {
-        val local = db.usedSymbolDao().getAllUsedSymbol()
-        val merged = mergeLists(local, remote, { it.symbol }, { it.lastModifiedAt })
+        val local = db.usedSymbolDao().getAllUsedSymbolForSync()
+        val merged = mergeLists(local, remote, { it.symbol }, { it.lastModifiedAt }, { it.deletedAt })
         for (item in local) db.usedSymbolDao().delete(item)
         if (merged.isNotEmpty()) db.usedSymbolDao().insertAll(merged)
+    }
+
+    // ─────────── Tombstone GC ──────────────────────────
+
+    /** 物理删除超过 30 天的 tombstone */
+    fun purgeOldDeletedEntries() {
+        val threshold = System.currentTimeMillis() - 30L * 24 * 60 * 60 * 1000
+        db.phraseDao().purgeDeletedBefore(threshold)
+        db.clipboardDao().purgeDeletedBefore(threshold)
+        db.sideSymbolDao().purgeDeletedBefore(threshold)
+        db.skbFunDao().purgeDeletedBefore(threshold)
+        db.usedSymbolDao().purgeDeletedBefore(threshold)
     }
 
     // ─────────── 辅助 ───────────

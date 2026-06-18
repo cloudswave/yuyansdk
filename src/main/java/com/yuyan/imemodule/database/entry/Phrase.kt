@@ -23,4 +23,6 @@ data class Phrase(
     val time: Long = System.currentTimeMillis(),
     @ColumnInfo(name = "lastModifiedAt")
     var lastModifiedAt: Long = System.currentTimeMillis(),
+    @ColumnInfo(name = "deletedAt")
+    var deletedAt: Long? = null,
 )
